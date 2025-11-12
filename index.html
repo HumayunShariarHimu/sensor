@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sensor</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* Reset */
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+    font-family:'Roboto', sans-serif;
+    background: #121212;
+    color:#f5f6fa;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:20px;
+}
+
+h1 {
+    color:#00ffcc;
+    text-align:center;
+    margin-bottom:20px;
+    font-size:2rem;
+}
+
+/* Enable Button */
+#enableBtn {
+    padding:15px 35px;
+    font-size:18px;
+    border:none;
+    border-radius:12px;
+    background: linear-gradient(45deg,#00ffcc,#00a8ff);
+    color:#121212;
+    cursor:pointer;
+    font-weight:700;
+    transition:0.3s;
+    margin-bottom:25px;
+}
+#enableBtn:hover { transform: scale(1.05); }
+
+/* Dashboard */
+.dashboard {
+    display:flex;
+    flex-wrap:wrap;
+    gap:25px;
+    justify-content:center;
+    width:100%;
+    max-width:1200px;
+    flex:1;
+}
+
+/* Card */
+.card {
+    background: #1f1f2f;
+    border-radius:20px;
+    padding:25px;
+    flex:1 1 320px;
+    max-width:360px;
+    box-shadow:0 12px 25px rgba(0,255,204,0.2);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+.card:hover {
+    transform: translateY(-8px);
+    box-shadow:0 16px 35px rgba(0,255,204,0.3);
+}
+.card h2 {
+    margin-bottom:18px;
+    color:#00ffcc;
+    text-align:center;
+}
+
+/* Video & Canvas */
+video, canvas {
+    width:100%;
+    border-radius:12px;
+    background:#2f2f3f;
+}
+canvas { height:110px; }
+
+p {
+    margin-top:12px;
+    font-size:16px;
+    text-align:center;
+    color:#f5f6fa;
+    white-space:pre-line;
+    word-wrap:break-word;
+}
+
+/* Footer */
+footer {
+    width:100%;
+    text-align:center;
+    padding:18px 0;
+    margin-top:30px;
+    color:#718093;
+    font-size:14px;
+}
+
+@media(max-width:768px){
+    .dashboard { flex-direction:column; align-items:center; }
+    .card { max-width:90%; }
+}
+</style>
+</head>
+<body>
+
+<h1>Sensor</h1>
+<button id="enableBtn">Enable Sensors</button>
+
+<div class="dashboard">
+    <div class="card">
+        <h2>Gyroscope & Compass</h2>
+        <canvas id="orientationCanvas"></canvas>
+        <p id="orientationText">Waiting for sensor data...</p>
+    </div>
+
+    <div class="card">
+        <h2>Microphone Level</h2>
+        <canvas id="micCanvas"></canvas>
+        <p id="micText">Waiting for microphone...</p>
+    </div>
+
+    <div class="card">
+        <h2>Camera Feed</h2>
+        <video id="camera" autoplay playsinline></video>
+        <p id="cameraText"></p>
+    </div>
+</div>
+
+<footer>Humayun Shariar Himu</footer>
+
+<script>
+// ==== Elements ====
+const enableBtn = document.getElementById('enableBtn');
+
+const orientationCanvas = document.getElementById('orientationCanvas');
+const oCtx = orientationCanvas.getContext('2d');
+const orientationText = document.getElementById('orientationText');
+
+const micCanvas = document.getElementById('micCanvas');
+const mCtx = micCanvas.getContext('2d');
+const micText = document.getElementById('micText');
+
+const camera = document.getElementById('camera');
+const cameraText = document.getElementById('cameraText');
+
+// ==== Gyroscope / Compass ====
+function drawOrientation(alpha){
+    oCtx.clearRect(0,0,orientationCanvas.width,orientationCanvas.height);
+    oCtx.beginPath();
+    oCtx.arc(150,50,45,0,2*Math.PI);
+    oCtx.strokeStyle="#00ffcc";
+    oCtx.lineWidth=3;
+    oCtx.stroke();
+
+    let rad = (alpha-90)*Math.PI/180;
+    let x=150+45*Math.cos(rad);
+    let y=50+45*Math.sin(rad);
+    oCtx.beginPath();
+    oCtx.moveTo(150,50);
+    oCtx.lineTo(x,y);
+    oCtx.strokeStyle="#00a8ff";
+    oCtx.lineWidth=4;
+    oCtx.stroke();
+}
+
+function handleOrientation(event){
+    const alpha = event.alpha || 0;
+    const beta = event.beta || 0;
+    const gamma = event.gamma || 0;
+    orientationText.innerText = 
+        `Compass (α): ${alpha.toFixed(1)}°\nTilt front/back (β): ${beta.toFixed(1)}°\nTilt left/right (γ): ${gamma.toFixed(1)}°`;
+    drawOrientation(alpha);
+}
+
+// ==== Microphone + Camera ====
+async function startSensors(){
+    try{
+        // একসাথে audio + video request
+        const stream = await navigator.mediaDevices.getUserMedia({ audio:true, video:true });
+        
+        // Camera
+        camera.srcObject = stream;
+
+        // Microphone
+        const audioCtx = new AudioContext();
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        source.connect(analyser);
+        analyser.fftSize=256;
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        function updateMic(){
+            analyser.getByteFrequencyData(dataArray);
+            const avg = dataArray.reduce((a,b)=>a+b)/dataArray.length;
+            micText.innerText = `Mic level: ${avg.toFixed(1)}`;
+
+            mCtx.clearRect(0,0,micCanvas.width,micCanvas.height);
+            const barWidth = micCanvas.width/dataArray.length;
+            for(let i=0;i<dataArray.length;i++){
+                const barHeight = dataArray[i]/2;
+                mCtx.fillStyle="#00ffcc";
+                mCtx.fillRect(i*barWidth,micCanvas.height-barHeight,barWidth,barHeight);
+            }
+            requestAnimationFrame(updateMic);
+        }
+        updateMic();
+
+    }catch(err){
+        console.error("Camera/Microphone denied", err);
+        cameraText.innerText = "Camera/Microphone access denied or unavailable.";
+        micText.innerText = "Microphone access denied.";
+    }
+}
+
+// ==== Enable Sensors Button ====
+enableBtn.onclick = () => {
+    enableBtn.style.display = "none";
+
+    // iOS deviceOrientation permission
+    if(typeof DeviceOrientationEvent.requestPermission==='function'){
+        DeviceOrientationEvent.requestPermission().then(res=>{
+            if(res==='granted'){
+                window.addEventListener('deviceorientation', handleOrientation);
+            } else {
+                orientationText.innerText="Sensor permission denied.";
+            }
+        }).catch(console.error);
+    } else if(window.DeviceOrientationEvent){
+        window.addEventListener('deviceorientation', handleOrientation);
+    } else {
+        orientationText.innerText="DeviceOrientation not supported.";
+    }
+
+    startSensors();
+};
+</script>
+</body>
+</html>
